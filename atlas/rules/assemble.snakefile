@@ -41,20 +41,30 @@ raw_input_fractions=['R1','R2'] if paired_end else ['se']
 
 processed_steps=['raw']
 
-# controls files and deinterlevves them, for the pipeline all files have the same format
+
+def is_interleaved(wildcards):
+    paired_status = config["samples"][wildcards.sample].get("paired", True)
+    if isinstance(paired_status, str) and \
+       paired_status == "true" and \
+       len(config["samples"][wildcards.sample]["fastq"]) == 1:
+        return "t"
+    return "f"
+
 
 rule init_QC:
+    # controls files and deinterleaves them, standardizing all files for the pipeline
     input:
         lambda wc: config["samples"][wc.sample]["fastq"]
     output:
         temp(expand("{{sample}}/sequence_quality_control/{{sample}}_{step}_{fraction}.fastq.gz",
-            fraction=raw_input_fractions,step=processed_steps[-1]))
-    priority: 80
+                    fraction=raw_input_fractions,step=processed_steps[-1]))
+    priority:
+        80
     params:
         inputs = lambda wc: "in=%s" % config["samples"][wc.sample]["fastq"][0] if len(config["samples"][wc.sample]["fastq"]) == 1 else "in=%s in2=%s" % tuple(config["samples"][wc.sample]["fastq"]),
-        interleaved = lambda wc: "t" if config["samples"][wc.sample].get("paired", True) and len(config["samples"][wc.sample]["fastq"]) == 1 else "f",
-        outputs = lambda wc,output: "out1={0} out2={1}".format(*output) if paired_end else "out={0}".format(*output),
-        verifypaired="t" if paired_end else "f"
+        interleaved = lambda wc: is_interleaved(wc),
+        outputs = lambda wc, output: "out1={0} out2={1}".format(*output) if paired_end else "out={0}".format(*output),
+        verifypaired = lambda wc: is_interleaved(wc)
     log:
         "{sample}/logs/{sample}_init.log"
     conda:
@@ -64,10 +74,14 @@ rule init_QC:
     resources:
         mem = config.get("java_mem", 5)
     shell:
-        """{SHPFXM} reformat.sh {params.inputs} interleaved={params.interleaved}\
+        """{SHPFXM} reformat.sh {params.inputs} \
+        interleaved={params.interleaved} \
         {params.outputs} \
         qout=33 \
-        overwrite=true\
+        overwrite=true \
+        addslash=t \
+        trimreaddescription=t \
+        overwrite=true \
         verifypaired={params.verifypaired} \
         threads={threads} \
         -Xmx{resources.mem}G 2> {log}
@@ -190,7 +204,7 @@ rule quality_filter:
         error_correction_pe= "t" if paired_end and config.get('error_correction_overlapping_pairs',True) else "f",
         minlength = config.get("preprocess_minimum_passing_read_length", PREPROCESS_MINIMUM_PASSING_READ_LENGTH),
         minbasefrequency = config.get("preprocess_minimum_base_frequency", PREPROCESS_MINIMUM_BASE_FREQUENCY),
-        interleaved = "t" if paired_end else "f",
+        interleaved = lambda wc: is_interleaved(wc),
         inputs= lambda wc,input:"in1={0} in2={1}".format(*input) if paired_end else "in={0}".format(*input),
         outputs=  lambda wc,output:"out1={0} out2={1} outs={2}".format(*output) if paired_end else "out={0}".format(*output)
     log:
@@ -405,10 +419,11 @@ def get_quality_controlled_reads(wildcards):
             fastq = dict(zip(['R1','R2'],config["samples"][wildcards.sample]["fastq"]))
         elif n_files==1:
             fastq = {'se':config["samples"][wildcards.sample]["fastq"]}
-            assert not config["samples"][wc.sample].get("paired", False), "Starting with a paired-end interleaved file is not implemented. De interleve your fastq with reformat.sh"
+            # FIXME: this is fixed by init_QC, right?
+            assert not config["samples"][wc.sample].get("paired", False), "Starting with a paired-end interleaved file is not implemented. De-interleave your fastq with reformat.sh"
     else:
         # reads that have gone through ATLAS QC
-        fractions= ['R1','R2','se'] if (n_files==2) or config["samples"][wildcards.sample].get("paired", False) else ['se']
+        fractions = ['R1','R2','se'] if (n_files==2) or config["samples"][wildcards.sample].get("paired", False) else ['se']
         fastq = dict(zip(fractions, expand("{sample}/sequence_quality_control/{sample}_QC_{fraction}.fastq.gz",fraction=fractions,**wildcards)))
 
     return fastq
@@ -525,7 +540,7 @@ rule normalize_coverage_across_kmers:
         extra_paired = lambda wc, input: "extra=%s" % input.se if hasattr(input,'se') else "",
         output_single = lambda wc,output,input: "out=%s" % output[2] if hasattr(input,'R1') else "out=%s" % output[0],
         output_paired = lambda wc,output: "out=%s out2=%s" % (output[0],output[1]) if hasattr(input,'R1') else "",
-        interleaved = "f" #lambda wc, input: "t" if (wc.fraction=='pe') else "f"   # I don't know how to handle interleaved files at this stage
+        interleaved = "f"
     log:
         "{sample}/logs/{sample}_normalization.log"
     conda:
