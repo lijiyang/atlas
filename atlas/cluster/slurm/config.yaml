@@ -1,7 +1,8 @@
 restart-times: 3
 jobscript: "slurm-jobscript.sh"
-cluster: "slurm-submit.py"
-cluster-status: "slurm-status.py"
+cluster: "slurm_scheduler.py"
+cluster-status: "slurm_status.py"
+cluster-config: "/raid/user2/kieser/Phages_Nestle/atlas/atlas/cluster/slurm/cluster_spec.yaml"
 max-jobs-per-second: 1
 max-status-checks-per-second: 10
 local-cores: 1

@@ -1,0 +1,19 @@
+__default__:
+    # account: normal #requred
+    time: 600
+    partition: normal # required
+    #nodes: 1
+    # ntasks: 24
+    
+
+## Overwrite default
+
+# run_megahit:
+#   partition:bigmem
+
+# TODO: write list of profiles:
+# profiles:
+    # normal:
+    #    max_min:6000
+    #    max_mb:10000
+    # bigmem:
