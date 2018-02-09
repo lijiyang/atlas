@@ -51,16 +51,15 @@ def parse_comments(file, comment='#',sep='\t',expect_one_value=True):
 
 
 def get_ribosomal_rna_input(wildcards):
-    inputs = []
     data_type = config["samples"][wildcards.sample].get("type", "metagenome").lower()
 
-    clean_reads = "{sample}/sequence_quality_control/{sample}_{step}_{fraction}.fastq.gz".format(step=PROCESSED_STEPS[-2],**wildcards)
-    rrna_reads = "{sample}/sequence_quality_control/contaminants/rRNA_{fraction}.fastq.gz".format(**wildcards)
+    clean_reads = expand("{sample}/sequence_quality_control/{sample}_{step}_{fraction}.fastq.gz",step='clean', fraction=MULTIFILE_FRACTIONS,sample=wildcards.sample)
+    rrna_reads = expand("{sample}/sequence_quality_control/contaminants/rRNA_{fraction}.fastq.gz",fraction=MULTIFILE_FRACTIONS,sample=wildcards.sample)
 
-    if data_type == "metagenome" and os.path.exists(rrna_reads):
-        return [clean_reads, rrna_reads]
+    if data_type == "metagenome" and 'rrna' in [c.lower() for c in config["contaminant_references"].keys()]:
+        return {'clean_reads':clean_reads, 'rrna_reads':rrna_reads}
     else:
-        return [clean_reads]
+        return {'clean_reads':clean_reads}
 
 
 def get_finalize_qc_input(wildcards):
@@ -391,24 +390,20 @@ PROCESSED_STEPS.append("QC")
 
 rule postprocess_after_decontamination:
     input:
-        expand("{{sample}}/sequence_quality_control/{{sample}}_{step}_{fraction}.fastq.gz",step=PROCESSED_STEPS[-2],fraction=MULTIFILE_FRACTIONS)
+        unpack(get_ribosomal_rna_input)
     output:
         expand("{{sample}}/sequence_quality_control/{{sample}}_{step}_{fraction}.fastq.gz",step=PROCESSED_STEPS[-1],fraction=MULTIFILE_FRACTIONS)
     threads:
         1
-    params:
-        rrna_reads= expand("{{sample}}/sequence_quality_control/contaminants/rRNA_{fraction}.fastq.gz",fraction=MULTIFILE_FRACTIONS)
     run:
         import shutil
-        data_type = config["samples"][wildcards.sample].get("type", "metagenome").lower()
         for i in range(len(MULTIFILE_FRACTIONS)):
             with open(output[i], 'wb') as outFile:
-                with open(input[i], 'rb') as infile1:
+                with open(input.clean_reads[i], 'rb') as infile1:
                     shutil.copyfileobj(infile1, outFile)
-                    if data_type == "metagenome" and os.path.exists(params.rrna_reads[i]):
-                        with open(params.rrna_reads[i], 'rb') as infile2:
+                    if hasattr(input, 'rrna_reads'):
+                        with open(input.rrna_reads[i], 'rb') as infile2:
                             shutil.copyfileobj(infile2, outFile)
-
 
 if PAIRED_END:
     rule calculate_insert_size:
@@ -574,15 +569,15 @@ rule finalize_QC:
 rule QC_report:
     input:
         expand("{sample}/sequence_quality_control/finished_QC", sample=SAMPLES),
-        "stats/read_counts.tsv",
+        read_counts= "stats/read_counts.tsv",
         read_length_stats= ['stats/insert_stats.tsv','stats/read_length_stats.tsv'] if PAIRED_END else 'stats/read_length_stats.tsv'
     output:
-        touch("finished_QC")
-    shell:
-        """
-        if [ -d ref ]; then
-            rm -r ref
-        fi
-        """
+        touch("finished_QC"),
+        report = "reports/QC_report.html"
+    conda:
+        "%s/report.yaml" % CONDAENV
+    script:
+        "../report/qc_report.py"
+
 
 # aggregate stats reports ...
