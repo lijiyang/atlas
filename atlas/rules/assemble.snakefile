@@ -59,10 +59,10 @@ rule normalize_coverage_across_kmers:
         t = config.get("normalization_target_depth", NORMALIZATION_TARGET_DEPTH),
         minkmers = config.get("normalization_minimum_kmers", NORMALIZATION_MINIMUM_KMERS),
         input_single = lambda wc, input: "in=%s" % input.se if hasattr(input, 'se') else "null",
-        extra_single = lambda wc, input: "extra=%s,%s" % (input.R1, input.R2) if hasattr(input, 'R1') else "",
+        extra_paired = lambda wc, input: "extra=%s,%s" % (input.R1, input.R2) if hasattr(input, 'R1') else "",
         has_paired_end_files = lambda wc, input: "t" if hasattr(input, 'R1') else "f",
         input_paired = lambda wc, input: "in=%s in2=%s" % (input.R1, input.R2) if hasattr(input, 'R1') else "null",
-        extra_paired = lambda wc, input: "extra=%s" % input.se if hasattr(input, 'se') else "",
+        extra_single = lambda wc, input: "extra=%s" % input.se if hasattr(input, 'se') else "",
         output_single = lambda wc, output, input: "out=%s" % output[2] if hasattr(input, 'R1') else "out=%s" % output[0],
         output_paired = lambda wc, output, input: "out=%s out2=%s" % (output[0], output[1]) if hasattr(input, 'R1') else "null",
         tmpdir = "tmpdir=%s" % TMPDIR if TMPDIR else ""
